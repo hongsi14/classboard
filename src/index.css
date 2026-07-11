@@ -335,7 +335,7 @@ main { padding: 24px 32px 0; position: relative; }
 .planet:hover .planet-label { opacity: 1; transform: translateY(0); }
 @keyframes floaty {
   0%, 100% { margin-top: 0; }
-  50% { margin-top: -16px; }
+  50% { margin-top: -10px; }
 }
 @media (max-width: 1330px) {
   .planet { display: none; }

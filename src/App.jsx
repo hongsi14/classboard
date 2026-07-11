@@ -248,7 +248,7 @@ function Detail({ post, onBack, onDeleted }) {
 }
 
 /* ── 떠다니는 행성 (최근 7일 새 글) ── */
-const PLANETS = ['🪐', '🌍', '🌕', '☄️', '🛸', '⭐', '🌌', '💫']
+const PLANETS = ['🪐', '🌍', '🌕', '☄️', '🛸', '⭐', '🌌', '💫', '🌟', '🌙', '🌛', '🔭']
 const hashCode = (s) => {
   let h = 0
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
@@ -258,7 +258,7 @@ const hashCode = (s) => {
 function FloatingPlanets({ posts, onOpen }) {
   const recent = useMemo(() => {
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
-    return posts.filter((p) => new Date(p.created_at).getTime() > weekAgo).slice(0, 8)
+    return posts.filter((p) => new Date(p.created_at).getTime() > weekAgo).slice(0, 10)
   }, [posts])
 
   if (recent.length === 0) return null
@@ -268,10 +268,9 @@ function FloatingPlanets({ posts, onOpen }) {
       {recent.map((p, i) => {
         const h = hashCode(p.id)
         const n = recent.length
-        const jitter = (h % 5) - 2 // -2 ~ +2vh
-        const top = 10 + (i * 76) / Math.max(n, 1) + jitter
+        const top = 6 + (i * 82) / n // 균등 간격, 겹침 없음
         const offset = 14 + ((h >> 4) % 56) // 왼쪽 가장자리에서 14~70px
-        const size = 30 + ((h >> 8) % 18)
+        const size = 26 + ((h >> 8) % 12)
         const dur = 5 + ((h >> 12) % 5)
         const delay = -((h >> 16) % 6)
         return (
@@ -288,7 +287,7 @@ function FloatingPlanets({ posts, onOpen }) {
             onClick={() => onOpen(p.id)}
             aria-label={`새 글: ${p.title}`}
           >
-            <span className="planet-body">{PLANETS[h % PLANETS.length]}</span>
+            <span className="planet-body">{PLANETS[i % PLANETS.length]}</span>
             <span className="planet-label">{p.title}</span>
           </button>
         )
