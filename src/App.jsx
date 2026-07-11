@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { supabase, BUCKET, CATEGORIES, ACCESS_CODE } from './supabase'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { supabase, BUCKET } from './supabase'
 
 const MAX_FILE_MB = 50
 
@@ -26,48 +26,15 @@ function publicUrl(path) {
   return supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
 }
 
-/* ---------- 입장 화면 ---------- */
-function Gate({ onEnter }) {
-  const [code, setCode] = useState('')
-  const [shake, setShake] = useState(false)
-
-  const submit = () => {
-    if (code.trim() === ACCESS_CODE) {
-      localStorage.setItem('classboard_ok', '1')
-      onEnter()
-    } else {
-      setShake(true)
-      setTimeout(() => setShake(false), 500)
-    }
-  }
-
-  return (
-    <div className="gate">
-      <div className={`gate-card ${shake ? 'shake' : ''}`}>
-        <div className="gate-emoji">📚</div>
-        <h1>수업자료실</h1>
-        <p>선생님께 받은 비밀번호를 입력하세요</p>
-        <input
-          type="password"
-          value={code}
-          autoFocus
-          placeholder="비밀번호"
-          onChange={(e) => setCode(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-        />
-        <button className="btn-primary" onClick={submit}>들어가기</button>
-      </div>
-    </div>
-  )
-}
-
 /* ---------- 자료 올리기 ---------- */
-function UploadModal({ onClose, onDone }) {
+function UploadModal({ classes, initialClass, onClose, onDone }) {
   const [title, setTitle] = useState('')
-  const [category, setCategory] = useState(CATEGORIES[0])
+  const [className, setClassName] = useState(initialClass || classes[0] || '')
+  const [newClass, setNewClass] = useState('')
+  const [isNew, setIsNew] = useState(classes.length === 0)
   const [author, setAuthor] = useState('')
   const [description, setDescription] = useState('')
-  const [mode, setMode] = useState('file') // file | link
+  const [mode, setMode] = useState('file')
   const [file, setFile] = useState(null)
   const [linkUrl, setLinkUrl] = useState('')
   const [busy, setBusy] = useState(false)
@@ -75,7 +42,9 @@ function UploadModal({ onClose, onDone }) {
 
   const submit = async () => {
     setError('')
+    const cls = (isNew ? newClass : className).trim()
     if (!title.trim()) return setError('제목을 입력해 주세요.')
+    if (!cls) return setError('수업 이름을 입력해 주세요.')
     if (mode === 'file' && !file) return setError('파일을 선택해 주세요.')
     if (mode === 'link' && !linkUrl.trim()) return setError('링크 주소를 입력해 주세요.')
     if (file && file.size > MAX_FILE_MB * 1024 * 1024)
@@ -94,7 +63,7 @@ function UploadModal({ onClose, onDone }) {
       }
       const { error: insErr } = await supabase.from('posts').insert({
         title: title.trim(),
-        category,
+        category: cls,
         author: author.trim() || null,
         description: description.trim() || null,
         link_url: mode === 'link' ? linkUrl.trim() : null,
@@ -119,12 +88,17 @@ function UploadModal({ onClose, onDone }) {
         <label>제목 <span className="req">*</span></label>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 3주차 수업 프린트" autoFocus />
 
-        <label>분류</label>
+        <label>수업 <span className="req">*</span></label>
         <div className="chip-row">
-          {CATEGORIES.map((c) => (
-            <button key={c} className={`chip ${category === c ? 'on' : ''}`} onClick={() => setCategory(c)}>{c}</button>
+          {classes.map((c) => (
+            <button key={c} className={`chip ${!isNew && className === c ? 'on' : ''}`}
+              onClick={() => { setIsNew(false); setClassName(c) }}>{c}</button>
           ))}
+          <button className={`chip ${isNew ? 'on' : ''}`} onClick={() => setIsNew(true)}>＋ 새 수업</button>
         </div>
+        {isNew && (
+          <input value={newClass} onChange={(e) => setNewClass(e.target.value)} placeholder="새 수업 이름 (예: 3학년 국어)" />
+        )}
 
         <label>올리는 사람</label>
         <input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="이름 (선택)" />
@@ -163,22 +137,20 @@ function UploadModal({ onClose, onDone }) {
   )
 }
 
-/* ---------- 자료 카드 ---------- */
+/* ---------- 자료 타일 ---------- */
 function PostCard({ post, onDelete }) {
   const isLink = !!post.link_url
   const href = isLink ? post.link_url : post.file_path ? publicUrl(post.file_path) : null
 
   return (
     <article className="card">
-      <div className="card-icon">{isLink ? '🔗' : fileIcon(post.file_name)}</div>
-      <div className="card-body">
-        <div className="card-top">
-          <span className="cat">{post.category}</span>
-          <span className="date">{formatDate(post.created_at)}{post.author ? ` · ${post.author}` : ''}</span>
-        </div>
-        <h3>{post.title}</h3>
-        {post.description && <p className="desc">{post.description}</p>}
+      <div className="card-head">
+        <div className="card-icon">{isLink ? '🔗' : fileIcon(post.file_name)}</div>
+        <span className="cat">{post.category}</span>
       </div>
+      <h3>{post.title}</h3>
+      {post.description && <p className="desc">{post.description}</p>}
+      <div className="card-meta">{formatDate(post.created_at)}{post.author ? ` · ${post.author}` : ''}</div>
       <div className="card-actions">
         {href && (
           <a className="btn-primary" href={href} target="_blank" rel="noreferrer" download={!isLink ? post.file_name : undefined}>
@@ -191,8 +163,8 @@ function PostCard({ post, onDelete }) {
   )
 }
 
-/* ---------- 게시판 본체 ---------- */
-function Board() {
+/* ---------- 게시판 ---------- */
+export default function App() {
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('전체')
@@ -210,16 +182,19 @@ function Board() {
 
   useEffect(() => { load() }, [load])
 
+  const classes = useMemo(
+    () => [...new Set(posts.map((p) => p.category).filter(Boolean))],
+    [posts]
+  )
+
   const handleDelete = async (post) => {
-    const code = prompt('삭제하려면 게시판 비밀번호를 입력하세요')
-    if (code === null) return
-    if (code !== ACCESS_CODE) return alert('비밀번호가 맞지 않아요.')
+    if (!confirm(`'${post.title}' 자료를 삭제할까요?`)) return
     if (post.file_path) await supabase.storage.from(BUCKET).remove([post.file_path])
     await supabase.from('posts').delete().eq('id', post.id)
     load()
   }
 
-  const tabs = ['전체', ...CATEGORIES]
+  const tabs = ['전체', ...classes]
   const shown = filter === '전체' ? posts : posts.filter((p) => p.category === filter)
 
   return (
@@ -227,6 +202,7 @@ function Board() {
       <header>
         <div className="header-inner">
           <div>
+            <p className="eyebrow">CLASS MATERIALS</p>
             <h1>수업자료실</h1>
             <p className="sub">필요한 자료를 내려받고, 새 자료를 올려 주세요</p>
           </div>
@@ -234,7 +210,7 @@ function Board() {
         </div>
       </header>
 
-      <nav className="tabs" aria-label="분류">
+      <nav className="tabs" aria-label="수업">
         {tabs.map((t) => (
           <button key={t} className={`tab ${filter === t ? 'on' : ''}`} onClick={() => setFilter(t)}>
             {t}
@@ -252,20 +228,20 @@ function Board() {
             <button className="btn-primary" onClick={() => setShowUpload(true)}>첫 자료 올리기</button>
           </div>
         ) : (
-          shown.map((p) => <PostCard key={p.id} post={p} onDelete={handleDelete} />)
+          <div className="grid">
+            {shown.map((p) => <PostCard key={p.id} post={p} onDelete={handleDelete} />)}
+          </div>
         )}
       </main>
 
       {showUpload && (
         <UploadModal
+          classes={classes}
+          initialClass={filter !== '전체' ? filter : undefined}
           onClose={() => setShowUpload(false)}
           onDone={() => { setShowUpload(false); load() }}
         />
       )}
     </div>
   )
-}
-
-export default function App() {
-  return <Board />
 }
