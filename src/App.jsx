@@ -247,6 +247,56 @@ function Detail({ post, onBack, onDeleted }) {
   )
 }
 
+/* ── 떠다니는 행성 (최근 7일 새 글) ── */
+const PLANETS = ['🪐', '🌍', '🌕', '☄️', '🛸', '⭐', '🌌', '💫']
+const hashCode = (s) => {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+  return h
+}
+
+function FloatingPlanets({ posts, onOpen }) {
+  const recent = useMemo(() => {
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+    return posts.filter((p) => new Date(p.created_at).getTime() > weekAgo).slice(0, 8)
+  }, [posts])
+
+  if (recent.length === 0) return null
+
+  return (
+    <>
+      {recent.map((p, i) => {
+        const h = hashCode(p.id)
+        const n = recent.length
+        const jitter = (h % 5) - 2 // -2 ~ +2vh
+        const top = 10 + (i * 76) / Math.max(n, 1) + jitter
+        const offset = 14 + ((h >> 4) % 56) // 왼쪽 가장자리에서 14~70px
+        const size = 30 + ((h >> 8) % 18)
+        const dur = 5 + ((h >> 12) % 5)
+        const delay = -((h >> 16) % 6)
+        return (
+          <button
+            key={p.id}
+            className="planet"
+            style={{
+              left: `${offset}px`,
+              top: `${top}vh`,
+              fontSize: `${size}px`,
+              animationDuration: `${dur}s`,
+              animationDelay: `${delay}s`,
+            }}
+            onClick={() => onOpen(p.id)}
+            aria-label={`새 글: ${p.title}`}
+          >
+            <span className="planet-body">{PLANETS[h % PLANETS.length]}</span>
+            <span className="planet-label">{p.title}</span>
+          </button>
+        )
+      })}
+    </>
+  )
+}
+
 /* ── 앱 ── */
 export default function App() {
   const [posts, setPosts] = useState([])
@@ -352,6 +402,8 @@ export default function App() {
           <button className="btn-dark" onClick={goList}>목록으로</button>
         </div>
       )}
+
+      {route.view === 'list' && <FloatingPlanets posts={posts} onOpen={openPost} />}
 
       <button className="fab" onClick={() => setCompose(true)}>＋ 글쓰기</button>
 

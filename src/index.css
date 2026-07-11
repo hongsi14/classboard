@@ -3,7 +3,7 @@
    초대형 타이포 탭 · 알약/원형 컨트롤 · 검정 포인트
 ───────────────────────────────────────── */
 :root {
-  --page: #e8eaee;
+  --page: #0a0e18;
   --panel: #ffffff;
   --card-edge: #ececef;
   --ink: #101318;
@@ -24,6 +24,50 @@ body {
   font-size: 16px;
   line-height: 1.6;
   padding: 20px 14px 90px;
+  min-height: 100vh;
+}
+/* 별 포인트 — 두 겹, 한 겹은 은은하게 깜빡임 */
+body::before, body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: -1;
+  pointer-events: none;
+}
+body::before {
+  background-image:
+    radial-gradient(1.5px 1.5px at 6% 12%, #fff, transparent),
+    radial-gradient(2px 2px at 13% 64%, #ffd9a0, transparent),
+    radial-gradient(1.5px 1.5px at 4% 38%, #a8c8ff, transparent),
+    radial-gradient(1px 1px at 9% 85%, #fff, transparent),
+    radial-gradient(2px 2px at 16% 26%, #fff, transparent),
+    radial-gradient(1px 1px at 3% 55%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 92% 18%, #fff, transparent),
+    radial-gradient(2px 2px at 96% 48%, #ffd9a0, transparent),
+    radial-gradient(1px 1px at 89% 70%, #a8c8ff, transparent),
+    radial-gradient(1.5px 1.5px at 94% 88%, #fff, transparent),
+    radial-gradient(1px 1px at 86% 34%, #fff, transparent),
+    radial-gradient(1px 1px at 50% 4%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 30% 3%, #cfe0ff, transparent),
+    radial-gradient(1px 1px at 70% 2%, #fff, transparent),
+    radial-gradient(1px 1px at 40% 97%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 62% 96%, #ffe9c9, transparent);
+}
+body::after {
+  background-image:
+    radial-gradient(1px 1px at 8% 22%, #fff, transparent),
+    radial-gradient(1px 1px at 12% 48%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 5% 72%, #ffe9c9, transparent),
+    radial-gradient(1px 1px at 15% 92%, #fff, transparent),
+    radial-gradient(1px 1px at 91% 8%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 97% 30%, #cfe0ff, transparent),
+    radial-gradient(1px 1px at 88% 56%, #fff, transparent),
+    radial-gradient(1px 1px at 95% 78%, #fff, transparent),
+    radial-gradient(1px 1px at 25% 6%, #fff, transparent),
+    radial-gradient(1px 1px at 78% 95%, #fff, transparent);
+  animation: twinkle 4s ease-in-out infinite;
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
 button { font-family: inherit; font-size: inherit; cursor: pointer; color: inherit; }
@@ -210,10 +254,10 @@ main { padding: 24px 32px 0; position: relative; }
 /* ── 플로팅 글쓰기 ── */
 .fab {
   position: fixed; right: max(24px, calc((100vw - 1120px) / 2 + 24px)); bottom: 26px;
-  background: var(--dark); color: #fff;
+  background: #fff; color: var(--ink);
   border: none; border-radius: 99px;
   padding: 15px 26px; font-weight: 700; font-size: 16px;
-  box-shadow: 0 10px 30px rgba(16, 19, 24, 0.3);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
   transition: transform 0.12s;
   z-index: 6;
 }
@@ -266,6 +310,36 @@ main { padding: 24px 32px 0; position: relative; }
   padding: 12px 26px; font-weight: 700;
 }
 .btn-dark:active { transform: scale(0.97); }
+
+/* ── 떠다니는 행성 ── */
+.planet {
+  position: fixed; z-index: 4;
+  background: none; border: none; padding: 6px;
+  line-height: 1;
+  filter: drop-shadow(0 0 14px rgba(255, 255, 255, 0.18)) drop-shadow(0 6px 14px rgba(0, 0, 0, 0.5));
+  animation: floaty ease-in-out infinite;
+  display: grid; justify-items: center; gap: 6px;
+  transition: transform 0.15s;
+}
+.planet:hover { transform: scale(1.18); }
+.planet-body { display: block; }
+.planet-label {
+  font-size: 12px; font-weight: 700;
+  background: #fff; color: var(--ink);
+  border-radius: 99px; padding: 4px 12px;
+  max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  opacity: 0; transform: translateY(-4px);
+  transition: opacity 0.15s, transform 0.15s;
+  pointer-events: none;
+}
+.planet:hover .planet-label { opacity: 1; transform: translateY(0); }
+@keyframes floaty {
+  0%, 100% { margin-top: 0; }
+  50% { margin-top: -16px; }
+}
+@media (max-width: 1330px) {
+  .planet { display: none; }
+}
 
 /* ── 모바일 ── */
 @media (max-width: 600px) {
