@@ -267,6 +267,5 @@ function Board() {
 }
 
 export default function App() {
-  const [entered, setEntered] = useState(() => localStorage.getItem('classboard_ok') === '1')
-  return entered ? <Board /> : <Gate onEnter={() => setEntered(true)} />
+  return <Board />
 }
