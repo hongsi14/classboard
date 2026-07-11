@@ -17,24 +17,30 @@ function fileIcon(name = '') {
   return '📎'
 }
 
-function formatDate(iso) {
+const fmtDate = (iso) => {
   const d = new Date(iso)
   return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}.`
 }
-
-function publicUrl(path) {
-  return supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
+const fmtTime = (iso) => {
+  const d = new Date(iso)
+  return `${fmtDate(iso)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+const publicUrl = (path) => supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
+const displayName = (a) => (a && a.trim()) || '익명'
+const parseHash = () => {
+  const m = window.location.hash.match(/^#\/post\/(.+)$/)
+  return m ? { view: 'post', id: m[1] } : { view: 'list' }
 }
 
-/* ---------- 자료 올리기 ---------- */
-function UploadModal({ classes, initialClass, onClose, onDone }) {
+/* ── 글쓰기 ── */
+function ComposeModal({ classes, initialClass, onClose, onDone }) {
   const [title, setTitle] = useState('')
+  const [content, setContent] = useState('')
   const [className, setClassName] = useState(initialClass || classes[0] || '')
   const [newClass, setNewClass] = useState('')
   const [isNew, setIsNew] = useState(classes.length === 0)
   const [author, setAuthor] = useState('')
-  const [description, setDescription] = useState('')
-  const [mode, setMode] = useState('file')
+  const [attach, setAttach] = useState('none') // none | file | link
   const [file, setFile] = useState(null)
   const [linkUrl, setLinkUrl] = useState('')
   const [busy, setBusy] = useState(false)
@@ -45,16 +51,16 @@ function UploadModal({ classes, initialClass, onClose, onDone }) {
     const cls = (isNew ? newClass : className).trim()
     if (!title.trim()) return setError('제목을 입력해 주세요.')
     if (!cls) return setError('수업 이름을 입력해 주세요.')
-    if (mode === 'file' && !file) return setError('파일을 선택해 주세요.')
-    if (mode === 'link' && !linkUrl.trim()) return setError('링크 주소를 입력해 주세요.')
+    if (attach === 'file' && !file) return setError('파일을 선택해 주세요.')
+    if (attach === 'link' && !linkUrl.trim()) return setError('링크 주소를 입력해 주세요.')
     if (file && file.size > MAX_FILE_MB * 1024 * 1024)
-      return setError(`파일이 너무 커요 (최대 ${MAX_FILE_MB}MB). 영상은 유튜브에 올린 뒤 링크로 공유해 주세요.`)
+      return setError(`파일이 너무 커요 (최대 ${MAX_FILE_MB}MB). 영상은 유튜브에 올리고 링크로 첨부해 주세요.`)
 
     setBusy(true)
     try {
       let file_path = null
       let file_name = null
-      if (mode === 'file' && file) {
+      if (attach === 'file' && file) {
         const safeName = file.name.replace(/[^\w.가-힣-]/g, '_')
         file_path = `${Date.now()}_${safeName}`
         file_name = file.name
@@ -65,8 +71,8 @@ function UploadModal({ classes, initialClass, onClose, onDone }) {
         title: title.trim(),
         category: cls,
         author: author.trim() || null,
-        description: description.trim() || null,
-        link_url: mode === 'link' ? linkUrl.trim() : null,
+        content: content.trim() || null,
+        link_url: attach === 'link' ? linkUrl.trim() : null,
         file_path,
         file_name,
       })
@@ -83,10 +89,7 @@ function UploadModal({ classes, initialClass, onClose, onDone }) {
   return (
     <div className="overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
-        <h2>자료 올리기</h2>
-
-        <label>제목 <span className="req">*</span></label>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 3주차 수업 프린트" autoFocus />
+        <div className="modal-title">새 글 쓰기</div>
 
         <label>수업 <span className="req">*</span></label>
         <div className="chip-row">
@@ -100,27 +103,29 @@ function UploadModal({ classes, initialClass, onClose, onDone }) {
           <input value={newClass} onChange={(e) => setNewClass(e.target.value)} placeholder="새 수업 이름 (예: 3학년 국어)" />
         )}
 
-        <label>올리는 사람</label>
-        <input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="이름 (선택)" />
+        <label>제목 <span className="req">*</span></label>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 3주차 프린트 올려요" autoFocus />
 
-        <label>설명</label>
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="간단한 안내 (선택)" />
+        <label>내용</label>
+        <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={4} placeholder="내용을 적어 주세요 (선택)" />
 
-        <div className="mode-toggle">
-          <button className={mode === 'file' ? 'on' : ''} onClick={() => setMode('file')}>📎 파일 올리기</button>
-          <button className={mode === 'link' ? 'on' : ''} onClick={() => setMode('link')}>🔗 링크 붙이기</button>
+        <label>이름</label>
+        <input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="비워 두면 '익명'으로 올라가요" />
+
+        <label>첨부</label>
+        <div className="seg">
+          <button className={attach === 'none' ? 'on' : ''} onClick={() => setAttach('none')}>없음</button>
+          <button className={attach === 'file' ? 'on' : ''} onClick={() => setAttach('file')}>파일</button>
+          <button className={attach === 'link' ? 'on' : ''} onClick={() => setAttach('link')}>링크</button>
         </div>
-
-        {mode === 'file' ? (
+        {attach === 'file' && (
           <label className="file-drop">
             <input type="file" hidden onChange={(e) => setFile(e.target.files[0] || null)} />
-            {file ? (
-              <span>{fileIcon(file.name)} {file.name}</span>
-            ) : (
-              <span className="muted">여기를 눌러 파일 선택 (최대 {MAX_FILE_MB}MB)</span>
-            )}
+            {file ? <span>{fileIcon(file.name)} {file.name}</span>
+              : <span className="muted">여기를 눌러 파일 선택 (최대 {MAX_FILE_MB}MB)</span>}
           </label>
-        ) : (
+        )}
+        {attach === 'link' && (
           <input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https:// 로 시작하는 주소" />
         )}
 
@@ -128,53 +133,142 @@ function UploadModal({ classes, initialClass, onClose, onDone }) {
 
         <div className="modal-actions">
           <button className="btn-ghost" onClick={onClose} disabled={busy}>취소</button>
-          <button className="btn-primary" onClick={submit} disabled={busy}>
-            {busy ? '올리는 중…' : '올리기'}
-          </button>
+          <button className="btn-dark" onClick={submit} disabled={busy}>{busy ? '올리는 중…' : '올리기'}</button>
         </div>
       </div>
     </div>
   )
 }
 
-/* ---------- 자료 타일 ---------- */
-function PostCard({ post, onDelete }) {
-  const isLink = !!post.link_url
-  const href = isLink ? post.link_url : post.file_path ? publicUrl(post.file_path) : null
-
+/* ── 게시글 카드 ── */
+function PostCard({ post, onOpen }) {
+  const count = post.comments?.[0]?.count ?? 0
   return (
-    <article className="card">
-      <div className="card-head">
-        <div className="card-icon">{isLink ? '🔗' : fileIcon(post.file_name)}</div>
-        <span className="cat">{post.category}</span>
+    <article className="card" onClick={() => onOpen(post.id)}>
+      <div className="card-top">
+        <span className="badge">{post.category}</span>
+        {(post.file_path || post.link_url) && (
+          <span className="attach-dot">{post.link_url ? '🔗' : fileIcon(post.file_name)}</span>
+        )}
       </div>
       <h3>{post.title}</h3>
-      {post.description && <p className="desc">{post.description}</p>}
-      <div className="card-meta">{formatDate(post.created_at)}{post.author ? ` · ${post.author}` : ''}</div>
-      <div className="card-actions">
-        {href && (
-          <a className="btn-primary" href={href} target="_blank" rel="noreferrer" download={!isLink ? post.file_name : undefined}>
-            {isLink ? '열기' : '내려받기'}
-          </a>
-        )}
-        <button className="btn-del" title="삭제" onClick={() => onDelete(post)}>삭제</button>
+      {post.content && <p className="preview">{post.content}</p>}
+      <div className="card-foot">
+        <span className="meta">{displayName(post.author)} · {fmtDate(post.created_at)}{count > 0 && <> · 💬 {count}</>}</span>
+        <span className="go" aria-hidden="true">→</span>
       </div>
     </article>
   )
 }
 
-/* ---------- 게시판 ---------- */
+/* ── 게시글 상세 ── */
+function Detail({ post, onBack, onDeleted }) {
+  const [comments, setComments] = useState([])
+  const [cAuthor, setCAuthor] = useState('')
+  const [cContent, setCContent] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const loadComments = useCallback(async () => {
+    const { data } = await supabase.from('comments').select('*')
+      .eq('post_id', post.id).order('created_at', { ascending: true })
+    setComments(data || [])
+  }, [post.id])
+
+  useEffect(() => { loadComments() }, [loadComments])
+
+  const addComment = async () => {
+    if (!cContent.trim()) return
+    setBusy(true)
+    await supabase.from('comments').insert({
+      post_id: post.id,
+      author: cAuthor.trim() || null,
+      content: cContent.trim(),
+    })
+    setCContent('')
+    setBusy(false)
+    loadComments()
+  }
+
+  const deleteComment = async (c) => {
+    if (!confirm('이 댓글을 삭제할까요?')) return
+    await supabase.from('comments').delete().eq('id', c.id)
+    loadComments()
+  }
+
+  const deletePost = async () => {
+    if (!confirm(`'${post.title}' 글을 삭제할까요? 댓글도 함께 지워져요.`)) return
+    if (post.file_path) await supabase.storage.from(BUCKET).remove([post.file_path])
+    await supabase.from('posts').delete().eq('id', post.id)
+    onDeleted()
+  }
+
+  const href = post.link_url || (post.file_path ? publicUrl(post.file_path) : null)
+
+  return (
+    <div className="detail">
+      <button className="circle-btn" onClick={onBack} aria-label="목록으로">←</button>
+      <div className="detail-head">
+        <span className="badge">{post.category}</span>
+        <h2>{post.title}</h2>
+        <p className="meta">{displayName(post.author)} · {fmtTime(post.created_at)}</p>
+      </div>
+      {post.content && <p className="body-text">{post.content}</p>}
+      {href && (
+        <a className="attach-row" href={href} target="_blank" rel="noreferrer"
+          download={post.file_path ? post.file_name : undefined}>
+          <span className="attach-ic">{post.link_url ? '🔗' : fileIcon(post.file_name)}</span>
+          <span className="attach-name">{post.link_url ? post.link_url : post.file_name}</span>
+          <span className="attach-act">{post.link_url ? '열기 →' : '내려받기 ↓'}</span>
+        </a>
+      )}
+      <button className="text-del" onClick={deletePost}>글 삭제</button>
+
+      <div className="comments">
+        <div className="comments-title">댓글 {comments.length}</div>
+        {comments.map((c) => (
+          <div key={c.id} className="comment">
+            <div className="comment-head">
+              <span className="comment-name">{displayName(c.author)}</span>
+              <span className="comment-date">{fmtDate(c.created_at)}</span>
+              <button className="comment-x" onClick={() => deleteComment(c)} aria-label="댓글 삭제">×</button>
+            </div>
+            <p>{c.content}</p>
+          </div>
+        ))}
+        <div className="comment-form">
+          <input className="name-in" value={cAuthor} onChange={(e) => setCAuthor(e.target.value)} placeholder="이름 (선택)" />
+          <input className="content-in" value={cContent} onChange={(e) => setCContent(e.target.value)}
+            placeholder="댓글을 남겨 주세요"
+            onKeyDown={(e) => e.key === 'Enter' && !busy && addComment()} />
+          <button className="circle-btn dark" onClick={addComment} disabled={busy} aria-label="댓글 등록">↑</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── 앱 ── */
 export default function App() {
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('전체')
-  const [showUpload, setShowUpload] = useState(false)
+  const [sort, setSort] = useState('latest') // latest | comments
+  const [search, setSearch] = useState('')
+  const [showSearch, setShowSearch] = useState(false)
+  const [compose, setCompose] = useState(false)
+  const [route, setRoute] = useState(parseHash())
+
+  useEffect(() => {
+    const onHash = () => setRoute(parseHash())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabase
       .from('posts')
-      .select('*')
+      .select('*, comments(count)')
       .order('created_at', { ascending: false })
     if (!error) setPosts(data || [])
     setLoading(false)
@@ -187,59 +281,86 @@ export default function App() {
     [posts]
   )
 
-  const handleDelete = async (post) => {
-    if (!confirm(`'${post.title}' 자료를 삭제할까요?`)) return
-    if (post.file_path) await supabase.storage.from(BUCKET).remove([post.file_path])
-    await supabase.from('posts').delete().eq('id', post.id)
-    load()
-  }
+  const shown = useMemo(() => {
+    let list = filter === '전체' ? posts : posts.filter((p) => p.category === filter)
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      list = list.filter((p) =>
+        [p.title, p.content, p.author, p.category].some((v) => v && v.toLowerCase().includes(q)))
+    }
+    if (sort === 'comments') {
+      list = [...list].sort((a, b) => (b.comments?.[0]?.count ?? 0) - (a.comments?.[0]?.count ?? 0))
+    }
+    return list
+  }, [posts, filter, search, sort])
 
-  const tabs = ['전체', ...classes]
-  const shown = filter === '전체' ? posts : posts.filter((p) => p.category === filter)
+  const openPost = (id) => { window.location.hash = `#/post/${id}` }
+  const goList = () => { window.location.hash = '' }
+
+  const current = route.view === 'post' ? posts.find((p) => p.id === route.id) : null
 
   return (
-    <div className="board">
-      <header>
-        <div className="header-inner">
-          <div>
-            <p className="eyebrow">CLASS MATERIALS</p>
-            <h1>수업자료실</h1>
-            <p className="sub">필요한 자료를 내려받고, 새 자료를 올려 주세요</p>
-          </div>
-          <button className="btn-primary big" onClick={() => setShowUpload(true)}>＋ 자료 올리기</button>
+    <div className="canvas">
+      <div className="topbar">
+        <div className="pill logo-pill"><span className="logo-dot">✳</span> 수업자료실</div>
+        <div className="topbar-right">
+          {showSearch && (
+            <input className="search-in" autoFocus value={search}
+              onChange={(e) => setSearch(e.target.value)} placeholder="검색" />
+          )}
+          <button className="circle-btn" aria-label="검색"
+            onClick={() => { setShowSearch(!showSearch); if (showSearch) setSearch('') }}>🔍</button>
         </div>
-      </header>
+      </div>
 
-      <nav className="tabs" aria-label="수업">
-        {tabs.map((t) => (
-          <button key={t} className={`tab ${filter === t ? 'on' : ''}`} onClick={() => setFilter(t)}>
-            {t}
-            <span className="count">{t === '전체' ? posts.length : posts.filter((p) => p.category === t).length}</span>
-          </button>
-        ))}
-      </nav>
-
-      <main>
-        {loading ? (
-          <p className="empty">불러오는 중…</p>
-        ) : shown.length === 0 ? (
-          <div className="empty">
-            <p>아직 자료가 없어요.</p>
-            <button className="btn-primary" onClick={() => setShowUpload(true)}>첫 자료 올리기</button>
+      {route.view === 'list' ? (
+        <>
+          <div className="hero">
+            <div className="hero-glow" aria-hidden="true" />
+            <div className="hero-tabs">
+              {['전체', ...classes].map((t) => (
+                <button key={t} className={`hero-tab ${filter === t ? 'on' : ''}`} onClick={() => setFilter(t)}>{t}</button>
+              ))}
+            </div>
+            <div className="sub-tabs">
+              <button className={sort === 'latest' ? 'on' : ''} onClick={() => setSort('latest')}>최신순</button>
+              <button className={sort === 'comments' ? 'on' : ''} onClick={() => setSort('comments')}>댓글순</button>
+            </div>
           </div>
-        ) : (
-          <div className="grid">
-            {shown.map((p) => <PostCard key={p.id} post={p} onDelete={handleDelete} />)}
-          </div>
-        )}
-      </main>
 
-      {showUpload && (
-        <UploadModal
+          <main>
+            {loading ? (
+              <p className="empty">불러오는 중…</p>
+            ) : shown.length === 0 ? (
+              <div className="empty">
+                <p>{search ? '검색 결과가 없어요.' : '아직 글이 없어요. 첫 글을 남겨 보세요!'}</p>
+              </div>
+            ) : (
+              <div className="grid">
+                {shown.map((p) => <PostCard key={p.id} post={p} onOpen={openPost} />)}
+              </div>
+            )}
+          </main>
+        </>
+      ) : loading ? (
+        <p className="empty">불러오는 중…</p>
+      ) : current ? (
+        <Detail post={current} onBack={goList} onDeleted={() => { goList(); load() }} />
+      ) : (
+        <div className="empty">
+          <p>글을 찾을 수 없어요. 삭제되었을 수 있어요.</p>
+          <button className="btn-dark" onClick={goList}>목록으로</button>
+        </div>
+      )}
+
+      <button className="fab" onClick={() => setCompose(true)}>＋ 글쓰기</button>
+
+      {compose && (
+        <ComposeModal
           classes={classes}
           initialClass={filter !== '전체' ? filter : undefined}
-          onClose={() => setShowUpload(false)}
-          onDone={() => { setShowUpload(false); load() }}
+          onClose={() => setCompose(false)}
+          onDone={() => { setCompose(false); load() }}
         />
       )}
     </div>
