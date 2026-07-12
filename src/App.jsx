@@ -379,9 +379,11 @@ function FloatingPlanets({ posts, onOpen }) {
     <>
       {recent.map((p, i) => {
         const h = hashCode(p.id)
-        const n = recent.length
-        const top = 6 + (i * 82) / n // 균등 간격, 겹침 없음
-        const offset = 14 + ((h >> 4) % 56) // 왼쪽 가장자리에서 14~70px
+        const side = i % 2 === 0 ? 'left' : 'right'
+        const perSide = Math.ceil(recent.length / 2)
+        const slot = Math.floor(i / 2)
+        const top = 8 + (slot * 80) / perSide // 좌우 각각 균등 간격, 겹침 없음
+        const offset = 14 + ((h >> 4) % 56) // 가장자리에서 14~70px
         const size = 26 + ((h >> 8) % 12)
         const dur = 5 + ((h >> 12) % 5)
         const delay = -((h >> 16) % 6)
@@ -390,7 +392,7 @@ function FloatingPlanets({ posts, onOpen }) {
             key={p.id}
             className="planet"
             style={{
-              left: `${offset}px`,
+              [side]: `${offset}px`,
               top: `${top}vh`,
               fontSize: `${size}px`,
               animationDuration: `${dur}s`,
