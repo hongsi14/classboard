@@ -28,6 +28,7 @@ const fmtTime = (iso) => {
 }
 const publicUrl = (path) => supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
 const displayName = (a) => (a && a.trim()) || '익명'
+const isPinned = (p) => p.pinned_until && new Date(p.pinned_until + 'T23:59:59') >= new Date()
 const parseHash = () => {
   const m = window.location.hash.match(/^#\/post\/(.+)$/)
   return m ? { view: 'post', id: m[1] } : { view: 'list' }
@@ -42,6 +43,7 @@ function ComposeModal({ classes, initialClass, isAdmin, onClose, onDone }) {
   const [isNew, setIsNew] = useState(classes.length === 0)
   const [author, setAuthor] = useState('')
   const [attach, setAttach] = useState('none') // none | file | link
+  const [pinDate, setPinDate] = useState('')
   const [file, setFile] = useState(null)
   const [linkUrl, setLinkUrl] = useState('')
   const [busy, setBusy] = useState(false)
@@ -80,6 +82,7 @@ function ComposeModal({ classes, initialClass, isAdmin, onClose, onDone }) {
         file_path,
         file_name,
         is_admin: !!isAdmin,
+        pinned_until: isAdmin && pinDate ? pinDate : null,
       })
       if (insErr) throw insErr
       onDone()
@@ -134,6 +137,16 @@ function ComposeModal({ classes, initialClass, isAdmin, onClose, onDone }) {
           <input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https:// 로 시작하는 주소" />
         )}
 
+        {isAdmin && (
+          <>
+            <label>📌 상단 고정 (관리자)</label>
+            <div className="pin-row">
+              <input type="date" value={pinDate} onChange={(e) => setPinDate(e.target.value)} />
+              <span className="muted pin-hint">{pinDate ? `${pinDate}까지 맨 위에 고정돼요` : '날짜를 고르면 그날까지 맨 위에 고정돼요 (선택)'}</span>
+            </div>
+          </>
+        )}
+
         {error && <p className="error">{error}</p>}
 
         <div className="modal-actions">
@@ -154,6 +167,7 @@ function PostCard({ post, onOpen }) {
     <article className={`card ${isNotice ? 'notice' : ''} ${isQnA ? 'qna' : ''}`} onClick={() => onOpen(post.id)}>
       <div className="card-top">
         <span className="badge">{isNotice ? '📢 공지사항' : post.category}</span>
+        {isPinned(post) && <span className="pin-ic" title={`${post.pinned_until}까지 고정`}>📌</span>}
         {(post.file_path || post.link_url) && (
           <span className="attach-dot">{post.link_url ? '🔗' : fileIcon(post.file_name)}</span>
         )}
@@ -179,7 +193,8 @@ function PostCard({ post, onOpen }) {
 }
 
 /* ── 게시글 상세 ── */
-function Detail({ post, onBack, onDeleted, isAdmin }) {
+function Detail({ post, onBack, onDeleted, onChanged, isAdmin }) {
+  const [pinDate, setPinDate] = useState('')
   const [comments, setComments] = useState([])
   const [cAuthor, setCAuthor] = useState('')
   const [cContent, setCContent] = useState('')
@@ -237,6 +252,27 @@ function Detail({ post, onBack, onDeleted, isAdmin }) {
           <span className="attach-name">{post.link_url ? post.link_url : post.file_name}</span>
           <span className="attach-act">{post.link_url ? '열기 →' : '내려받기 ↓'}</span>
         </a>
+      )}
+      {isAdmin && (
+        <div className="pin-box">
+          {isPinned(post) ? (
+            <>
+              <span>📌 {post.pinned_until}까지 상단 고정 중</span>
+              <button className="btn-ghost sm" onClick={async () => {
+                await supabase.from('posts').update({ pinned_until: null }).eq('id', post.id)
+                onChanged()
+              }}>고정 해제</button>
+            </>
+          ) : (
+            <>
+              <input type="date" value={pinDate} onChange={(e) => setPinDate(e.target.value)} />
+              <button className="btn-dark sm" disabled={!pinDate} onClick={async () => {
+                await supabase.from('posts').update({ pinned_until: pinDate }).eq('id', post.id)
+                onChanged()
+              }}>📌 이 날짜까지 고정</button>
+            </>
+          )}
+        </div>
       )}
       {isAdmin && <button className="text-del" onClick={deletePost}>글 삭제</button>}
 
@@ -355,8 +391,9 @@ export default function App() {
   }, [boards, posts])
 
   const years = useMemo(() => {
-    const ys = [...new Set(posts.map((p) => new Date(p.created_at).getFullYear()))]
-    return ys.sort((a, b) => b - a)
+    const ys = new Set(posts.map((p) => new Date(p.created_at).getFullYear()))
+    ys.add(new Date().getFullYear())
+    return [...ys].sort((a, b) => b - a)
   }, [posts])
 
   const addBoard = async () => {
@@ -401,10 +438,10 @@ export default function App() {
     if (sort === 'comments') {
       list = [...list].sort((a, b) => (b.comments?.[0]?.count ?? 0) - (a.comments?.[0]?.count ?? 0))
     }
-    // 공지사항은 항상 맨 위에 고정
-    const notices = list.filter((p) => p.category === '공지사항')
-    const rest = list.filter((p) => p.category !== '공지사항')
-    return [...notices, ...rest]
+    // 📌 고정 글(마감일 전)은 항상 맨 위
+    const pinned = list.filter(isPinned)
+    const rest = list.filter((p) => !isPinned(p))
+    return [...pinned, ...rest]
   }, [posts, filter, search, sort, year])
 
   const toggleAdmin = () => {
@@ -477,12 +514,10 @@ export default function App() {
             <div className="sub-tabs">
               <button className={sort === 'latest' ? 'on' : ''} onClick={() => setSort('latest')}>최신순</button>
               <button className={sort === 'comments' ? 'on' : ''} onClick={() => setSort('comments')}>댓글순</button>
-              {years.length > 1 && (
-                <select className="year-select" value={year} onChange={(e) => setYear(e.target.value)} aria-label="연도">
-                  <option value="전체">전체 연도</option>
-                  {years.map((y) => <option key={y} value={y}>{y}년</option>)}
-                </select>
-              )}
+              <select className="year-select" value={year} onChange={(e) => setYear(e.target.value)} aria-label="연도">
+                <option value="전체">전체 연도</option>
+                {years.map((y) => <option key={y} value={y}>{y}년</option>)}
+              </select>
             </div>
           </div>
 
@@ -503,7 +538,7 @@ export default function App() {
       ) : loading ? (
         <p className="empty">불러오는 중…</p>
       ) : current ? (
-        <Detail post={current} isAdmin={isAdmin} onBack={goList} onDeleted={() => { goList(); load() }} />
+        <Detail post={current} isAdmin={isAdmin} onBack={goList} onChanged={load} onDeleted={() => { goList(); load() }} />
       ) : (
         <div className="empty">
           <p>글을 찾을 수 없어요. 삭제되었을 수 있어요.</p>
