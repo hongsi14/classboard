@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { supabase, BUCKET } from './supabase'
+import { supabase, BUCKET, ADMIN_CODE } from './supabase'
 
 const MAX_FILE_MB = 50
 const DEFAULT_BOARDS = ['공지사항', '1학년 과학', '2학년 과학', '3학년 과학', '기타 자료실', 'Q&A']
@@ -34,7 +34,7 @@ const parseHash = () => {
 }
 
 /* ── 글쓰기 ── */
-function ComposeModal({ classes, initialClass, onClose, onDone }) {
+function ComposeModal({ classes, initialClass, isAdmin, onClose, onDone }) {
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [className, setClassName] = useState(initialClass || classes[0] || '')
@@ -79,6 +79,7 @@ function ComposeModal({ classes, initialClass, onClose, onDone }) {
         link_url: attach === 'link' ? linkUrl.trim() : null,
         file_path,
         file_name,
+        is_admin: !!isAdmin,
       })
       if (insErr) throw insErr
       onDone()
@@ -161,6 +162,7 @@ function PostCard({ post, onOpen }) {
       {post.content && <p className="preview">{post.content}</p>}
       <div className="card-foot">
         <span className="meta">
+          {post.is_admin && <span className="admin-chip">관리자</span>}
           {displayName(post.author)} · {fmtDate(post.created_at)}
           {!isQnA && count > 0 && <> · 💬 {count}</>}
         </span>
@@ -177,7 +179,7 @@ function PostCard({ post, onOpen }) {
 }
 
 /* ── 게시글 상세 ── */
-function Detail({ post, onBack, onDeleted }) {
+function Detail({ post, onBack, onDeleted, isAdmin }) {
   const [comments, setComments] = useState([])
   const [cAuthor, setCAuthor] = useState('')
   const [cContent, setCContent] = useState('')
@@ -225,7 +227,7 @@ function Detail({ post, onBack, onDeleted }) {
       <div className="detail-head">
         <span className="badge">{post.category === '공지사항' ? '📢 공지사항' : post.category}</span>
         <h2>{post.category === 'Q&A' && <span className="q-mark">Q.</span>}{post.title}</h2>
-        <p className="meta">{displayName(post.author)} · {fmtTime(post.created_at)}</p>
+        <p className="meta">{post.is_admin && <span className="admin-chip">관리자</span>}{displayName(post.author)} · {fmtTime(post.created_at)}</p>
       </div>
       {post.content && <p className="body-text">{post.content}</p>}
       {href && (
@@ -236,7 +238,7 @@ function Detail({ post, onBack, onDeleted }) {
           <span className="attach-act">{post.link_url ? '열기 →' : '내려받기 ↓'}</span>
         </a>
       )}
-      <button className="text-del" onClick={deletePost}>글 삭제</button>
+      {isAdmin && <button className="text-del" onClick={deletePost}>글 삭제</button>}
 
       <div className="comments">
         <div className="comments-title">{post.category === 'Q&A' ? `답변 ${comments.length}` : `댓글 ${comments.length}`}</div>
@@ -245,7 +247,7 @@ function Detail({ post, onBack, onDeleted }) {
             <div className="comment-head">
               <span className="comment-name">{displayName(c.author)}</span>
               <span className="comment-date">{fmtDate(c.created_at)}</span>
-              <button className="comment-x" onClick={() => deleteComment(c)} aria-label="댓글 삭제">×</button>
+              {isAdmin && <button className="comment-x" onClick={() => deleteComment(c)} aria-label="댓글 삭제">×</button>}
             </div>
             <p>{c.content}</p>
           </div>
@@ -316,6 +318,7 @@ export default function App() {
   const [posts, setPosts] = useState([])
   const [boards, setBoards] = useState([])
   const [manage, setManage] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem('hg_admin') === '1')
   const [year, setYear] = useState('전체')
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('전체')
@@ -404,6 +407,26 @@ export default function App() {
     return [...notices, ...rest]
   }, [posts, filter, search, sort, year])
 
+  const toggleAdmin = () => {
+    if (isAdmin) {
+      if (confirm('관리자 모드를 해제할까요?')) {
+        setIsAdmin(false)
+        setManage(false)
+        localStorage.removeItem('hg_admin')
+      }
+      return
+    }
+    if (!ADMIN_CODE) return alert('관리자 비밀번호가 설정되어 있지 않아요.\n(GitHub Secret의 VITE_ACCESS_CODE)')
+    const code = prompt('관리자 비밀번호를 입력하세요')
+    if (code === null) return
+    if (code === ADMIN_CODE) {
+      setIsAdmin(true)
+      localStorage.setItem('hg_admin', '1')
+    } else {
+      alert('비밀번호가 맞지 않아요.')
+    }
+  }
+
   const openPost = (id) => { window.location.hash = `#/post/${id}` }
   const goList = () => { window.location.hash = '' }
 
@@ -420,6 +443,11 @@ export default function App() {
           )}
           <button className="circle-btn" aria-label="검색"
             onClick={() => { setShowSearch(!showSearch); if (showSearch) setSearch('') }}>🔍</button>
+          {isAdmin ? (
+            <button className="pill admin-pill" onClick={toggleAdmin}>🔓 관리자 모드</button>
+          ) : (
+            <button className="circle-btn" aria-label="관리자" onClick={toggleAdmin}>🔑</button>
+          )}
         </div>
       </div>
 
@@ -440,9 +468,11 @@ export default function App() {
                 </span>
               ))}
               {manage && <button className="tab-add" onClick={addBoard}>＋ 탭 추가</button>}
-              <button className={`tab-manage ${manage ? 'on' : ''}`} onClick={() => setManage(!manage)}>
-                {manage ? '완료' : '✎ 탭 편집'}
-              </button>
+              {isAdmin && (
+                <button className={`tab-manage ${manage ? 'on' : ''}`} onClick={() => setManage(!manage)}>
+                  {manage ? '완료' : '✎ 탭 편집'}
+                </button>
+              )}
             </div>
             <div className="sub-tabs">
               <button className={sort === 'latest' ? 'on' : ''} onClick={() => setSort('latest')}>최신순</button>
@@ -473,7 +503,7 @@ export default function App() {
       ) : loading ? (
         <p className="empty">불러오는 중…</p>
       ) : current ? (
-        <Detail post={current} onBack={goList} onDeleted={() => { goList(); load() }} />
+        <Detail post={current} isAdmin={isAdmin} onBack={goList} onDeleted={() => { goList(); load() }} />
       ) : (
         <div className="empty">
           <p>글을 찾을 수 없어요. 삭제되었을 수 있어요.</p>
@@ -488,6 +518,7 @@ export default function App() {
       {compose && (
         <ComposeModal
           classes={classes}
+          isAdmin={isAdmin}
           initialClass={filter !== '전체' ? filter : undefined}
           onClose={() => setCompose(false)}
           onDone={() => { setCompose(false); load() }}

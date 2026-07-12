@@ -6,3 +6,5 @@ export const supabase = createClient(
 )
 
 export const BUCKET = 'materials'
+
+export const ADMIN_CODE = import.meta.env.VITE_ACCESS_CODE || ''
