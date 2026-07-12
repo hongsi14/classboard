@@ -386,7 +386,7 @@ const hashCode = (s) => {
 function FloatingPlanets({ posts, onOpen }) {
   const recent = useMemo(() => {
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
-    return posts.filter((p) => new Date(p.created_at).getTime() > weekAgo).slice(0, 10)
+    return posts.filter((p) => p.is_admin && new Date(p.created_at).getTime() > weekAgo).slice(0, 10)
   }, [posts])
 
   if (recent.length === 0) return null
