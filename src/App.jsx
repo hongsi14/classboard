@@ -28,6 +28,7 @@ const fmtTime = (iso) => {
 }
 const publicUrl = (path) => supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
 const displayName = (a) => (a && a.trim()) || '익명'
+const authorName = (row) => (row.is_admin ? '금주쌤' : displayName(row.author))
 const isPinned = (p) => p.pinned_until && new Date(p.pinned_until + 'T23:59:59') >= new Date()
 const parseHash = () => {
   const m = window.location.hash.match(/^#\/post\/(.+)$/)
@@ -118,7 +119,11 @@ function ComposeModal({ classes, initialClass, isAdmin, onClose, onDone }) {
         <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={4} placeholder="내용을 적어 주세요 (선택)" />
 
         <label>이름</label>
-        <input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="비워 두면 '익명'으로 올라가요" />
+        {isAdmin ? (
+          <p className="muted fixed-name">금주쌤으로 올라가요 👩‍🏫</p>
+        ) : (
+          <input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="비워 두면 '익명'으로 올라가요" />
+        )}
 
         <label>첨부</label>
         <div className="seg">
@@ -176,13 +181,13 @@ function PostCard({ post, onOpen }) {
       {post.content && <p className="preview">{post.content}</p>}
       <div className="card-foot">
         <span className="meta">
-          {post.is_admin && <span className="admin-chip">관리자</span>}
-          {displayName(post.author)} · {fmtDate(post.created_at)}
-          {!isQnA && count > 0 && <> · 💬 {count}</>}
+          {post.is_admin && <span className="admin-chip">금주쌤</span>}
+          {authorName(post)} · {fmtDate(post.created_at)}
+          {count > 0 && <> · 💬 {count}</>}
         </span>
         {isQnA ? (
-          <span className={`answer-pill ${count > 0 ? 'done' : 'wait'}`}>
-            {count > 0 ? `답변 ${count}` : '답변 대기'}
+          <span className={`answer-pill ${post.answered ? 'done' : 'wait'}`}>
+            {post.answered ? '✓ 답변 완료' : '답변 대기'}
           </span>
         ) : (
           <span className="go" aria-hidden="true">→</span>
@@ -198,6 +203,7 @@ function Detail({ post, onBack, onDeleted, onChanged, isAdmin }) {
   const [comments, setComments] = useState([])
   const [cAuthor, setCAuthor] = useState('')
   const [cContent, setCContent] = useState('')
+  const [cImage, setCImage] = useState(null)
   const [busy, setBusy] = useState(false)
 
   const loadComments = useCallback(async () => {
@@ -209,20 +215,35 @@ function Detail({ post, onBack, onDeleted, onChanged, isAdmin }) {
   useEffect(() => { loadComments() }, [loadComments])
 
   const addComment = async () => {
-    if (!cContent.trim()) return
+    if (!cContent.trim() && !cImage) return
     setBusy(true)
+    let image_path = null
+    if (cImage) {
+      const safe = cImage.name.replace(/[^\w.가-힣-]/g, '_')
+      image_path = `comments/${Date.now()}_${safe}`
+      const { error: upErr } = await supabase.storage.from(BUCKET).upload(image_path, cImage)
+      if (upErr) {
+        alert('사진 올리기에 실패했어요. 잠시 후 다시 시도해 주세요.')
+        setBusy(false)
+        return
+      }
+    }
     await supabase.from('comments').insert({
       post_id: post.id,
       author: cAuthor.trim() || null,
-      content: cContent.trim(),
+      content: cContent.trim() || null,
+      image_path,
+      is_admin: !!isAdmin,
     })
     setCContent('')
+    setCImage(null)
     setBusy(false)
     loadComments()
   }
 
   const deleteComment = async (c) => {
     if (!confirm('이 댓글을 삭제할까요?')) return
+    if (c.image_path) await supabase.storage.from(BUCKET).remove([c.image_path])
     await supabase.from('comments').delete().eq('id', c.id)
     loadComments()
   }
@@ -242,7 +263,7 @@ function Detail({ post, onBack, onDeleted, onChanged, isAdmin }) {
       <div className="detail-head">
         <span className="badge">{post.category === '공지사항' ? '📢 공지사항' : post.category}</span>
         <h2>{post.category === 'Q&A' && <span className="q-mark">Q.</span>}{post.title}</h2>
-        <p className="meta">{post.is_admin && <span className="admin-chip">관리자</span>}{displayName(post.author)} · {fmtTime(post.created_at)}</p>
+        <p className="meta">{post.is_admin && <span className="admin-chip">금주쌤</span>}{authorName(post)} · {fmtTime(post.created_at)}</p>
       </div>
       {post.content && <p className="body-text">{post.content}</p>}
       {href && (
@@ -252,6 +273,24 @@ function Detail({ post, onBack, onDeleted, onChanged, isAdmin }) {
           <span className="attach-name">{post.link_url ? post.link_url : post.file_name}</span>
           <span className="attach-act">{post.link_url ? '열기 →' : '내려받기 ↓'}</span>
         </a>
+      )}
+      {isAdmin && post.category === 'Q&A' && (
+        <div className="pin-box">
+          {post.answered ? (
+            <>
+              <span>✓ 답변 완료로 표시된 질문이에요</span>
+              <button className="btn-ghost sm" onClick={async () => {
+                await supabase.from('posts').update({ answered: false }).eq('id', post.id)
+                onChanged()
+              }}>완료 해제</button>
+            </>
+          ) : (
+            <button className="btn-dark sm" onClick={async () => {
+              await supabase.from('posts').update({ answered: true }).eq('id', post.id)
+              onChanged()
+            }}>✓ 답변 완료로 표시</button>
+          )}
+        </div>
       )}
       {isAdmin && (
         <div className="pin-box">
@@ -281,18 +320,38 @@ function Detail({ post, onBack, onDeleted, onChanged, isAdmin }) {
         {comments.map((c) => (
           <div key={c.id} className="comment">
             <div className="comment-head">
-              <span className="comment-name">{displayName(c.author)}</span>
+              <span className="comment-name">{c.is_admin && <span className="admin-chip">금주쌤</span>}{authorName(c)}</span>
               <span className="comment-date">{fmtDate(c.created_at)}</span>
               {isAdmin && <button className="comment-x" onClick={() => deleteComment(c)} aria-label="댓글 삭제">×</button>}
             </div>
-            <p>{c.content}</p>
+            {c.content && <p>{c.content}</p>}
+            {c.image_path && (
+              <a href={publicUrl(c.image_path)} target="_blank" rel="noreferrer">
+                <img className="comment-img" src={publicUrl(c.image_path)} alt="댓글 사진" loading="lazy" />
+              </a>
+            )}
           </div>
         ))}
+        {cImage && (
+          <div className="img-preview">
+            <img src={URL.createObjectURL(cImage)} alt="첨부할 사진 미리보기" />
+            <button onClick={() => setCImage(null)} aria-label="사진 빼기">×</button>
+          </div>
+        )}
         <div className="comment-form">
-          <input className="name-in" value={cAuthor} onChange={(e) => setCAuthor(e.target.value)} placeholder="이름 (선택)" />
+          {isAdmin ? (
+            <span className="fixed-name-chip">금주쌤</span>
+          ) : (
+            <input className="name-in" value={cAuthor} onChange={(e) => setCAuthor(e.target.value)} placeholder="이름 (선택)" />
+          )}
           <input className="content-in" value={cContent} onChange={(e) => setCContent(e.target.value)}
             placeholder={post.category === 'Q&A' ? '답변을 남겨 주세요' : '댓글을 남겨 주세요'}
             onKeyDown={(e) => e.key === 'Enter' && !busy && addComment()} />
+          <label className="circle-btn cam-btn" aria-label="사진 첨부">
+            📷
+            <input type="file" accept="image/*" hidden
+              onChange={(e) => setCImage(e.target.files[0] || null)} />
+          </label>
           <button className="circle-btn dark" onClick={addComment} disabled={busy} aria-label="댓글 등록">↑</button>
         </div>
       </div>
@@ -464,6 +523,12 @@ export default function App() {
     }
   }
 
+  const banner = useMemo(() => {
+    const list = posts.filter((p) => p.category === '공지사항' && isPinned(p))
+    return list[0] || null
+  }, [posts])
+  const [bannerFold, setBannerFold] = useState(() => localStorage.getItem('hg_banner_fold') || '')
+
   const openPost = (id) => { window.location.hash = `#/post/${id}` }
   const goList = () => { window.location.hash = '' }
 
@@ -488,6 +553,20 @@ export default function App() {
         </div>
       </div>
 
+      {route.view === 'list' && banner && bannerFold !== banner.id && (
+        <div className="notice-bar" onClick={() => openPost(banner.id)} role="button" tabIndex={0}>
+          <span className="notice-mega">📢</span>
+          <span className="notice-text"><b>공지</b> {banner.title}</span>
+          <button className="notice-fold" aria-label="공지 접기"
+            onClick={(e) => { e.stopPropagation(); setBannerFold(banner.id); localStorage.setItem('hg_banner_fold', banner.id) }}>∧</button>
+        </div>
+      )}
+      {route.view === 'list' && banner && bannerFold === banner.id && (
+        <button className="notice-bar folded" aria-label="공지 펼치기"
+          onClick={() => { setBannerFold(''); localStorage.removeItem('hg_banner_fold') }}>
+          <span className="notice-mega">📢</span><span className="notice-text">공지 펼치기</span><span className="notice-fold">∨</span>
+        </button>
+      )}
       {route.view === 'list' ? (
         <>
           <div className="hero">

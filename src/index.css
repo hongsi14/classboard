@@ -149,6 +149,56 @@ input:focus, textarea:focus, button:focus-visible {
 .hero-tab.on { color: var(--ink); }
 .logo-heart { color: #e2574c; }
 .admin-pill { padding: 9px 16px; font-size: 14px; background: var(--dark); color: #fff; border: none; }
+.notice-bar {
+  margin: 0 24px 4px;
+  display: flex; align-items: center; gap: 10px;
+  background: #fff8e6;
+  border: 1px solid #f0dcae;
+  border-radius: 16px;
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 15px;
+  transition: background 0.15s;
+  width: calc(100% - 48px);
+  text-align: left;
+}
+.notice-bar:hover { background: #fdf2d7; }
+.notice-bar.folded { padding: 8px 16px; font-size: 13px; width: auto; }
+.notice-mega { font-size: 17px; }
+.notice-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notice-text b { margin-right: 6px; color: #8a5a00; }
+.notice-fold {
+  background: none; border: none; color: #b08a3e;
+  font-size: 14px; font-weight: 800; padding: 2px 6px;
+}
+.fixed-name { font-size: 14px; padding: 4px 2px; }
+.fixed-name-chip {
+  flex-shrink: 0; align-self: center;
+  font-size: 13px; font-weight: 800;
+  background: var(--dark); color: #fff;
+  border-radius: 99px; padding: 8px 14px;
+}
+.cam-btn { cursor: pointer; }
+.img-preview {
+  position: relative; width: fit-content; margin-top: 14px;
+}
+.img-preview img {
+  max-width: 160px; max-height: 120px;
+  border-radius: 12px; border: 1px solid var(--card-edge);
+  display: block;
+}
+.img-preview button {
+  position: absolute; top: -8px; right: -8px;
+  width: 24px; height: 24px;
+  background: var(--dark); color: #fff;
+  border: none; border-radius: 50%;
+  font-size: 13px; line-height: 1;
+}
+.comment-img {
+  display: block; margin-top: 8px;
+  max-width: 240px; max-height: 200px;
+  border-radius: 12px; border: 1px solid var(--card-edge);
+}
 .admin-chip {
   display: inline-block;
   font-size: 11px; font-weight: 800;
