@@ -67,6 +67,9 @@ function ComposeModal({ classes, initialClass, onClose, onDone }) {
         const { error: upErr } = await supabase.storage.from(BUCKET).upload(file_path, file)
         if (upErr) throw upErr
       }
+      if (isNew) {
+        await supabase.from('boards').insert({ name: cls, position: 99 })
+      }
       const { error: insErr } = await supabase.from('posts').insert({
         title: title.trim(),
         category: cls,
@@ -299,6 +302,9 @@ function FloatingPlanets({ posts, onOpen }) {
 /* ── 앱 ── */
 export default function App() {
   const [posts, setPosts] = useState([])
+  const [boards, setBoards] = useState([])
+  const [manage, setManage] = useState(false)
+  const [year, setYear] = useState('전체')
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('전체')
   const [sort, setSort] = useState('latest') // latest | comments
@@ -315,23 +321,59 @@ export default function App() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('posts')
-      .select('*, comments(count)')
-      .order('created_at', { ascending: false })
-    if (!error) setPosts(data || [])
+    const [postsRes, boardsRes] = await Promise.all([
+      supabase.from('posts').select('*, comments(count)').order('created_at', { ascending: false }),
+      supabase.from('boards').select('*').order('position').order('created_at'),
+    ])
+    if (!postsRes.error) setPosts(postsRes.data || [])
+    if (!boardsRes.error) setBoards(boardsRes.data || [])
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
 
-  const classes = useMemo(
-    () => [...new Set(posts.map((p) => p.category).filter(Boolean))],
-    [posts]
-  )
+  const classes = useMemo(() => {
+    if (boards.length > 0) return boards.map((b) => b.name)
+    return [...new Set(posts.map((p) => p.category).filter(Boolean))]
+  }, [boards, posts])
+
+  const years = useMemo(() => {
+    const ys = [...new Set(posts.map((p) => new Date(p.created_at).getFullYear()))]
+    return ys.sort((a, b) => b - a)
+  }, [posts])
+
+  const addBoard = async () => {
+    const name = prompt('새 탭 이름을 입력하세요')
+    if (!name || !name.trim()) return
+    const nm = name.trim()
+    if (nm === '전체' || classes.includes(nm)) return alert('이미 있는 이름이에요.')
+    await supabase.from('boards').insert({ name: nm, position: boards.length })
+    load()
+  }
+
+  const renameBoard = async (oldName) => {
+    const name = prompt('탭 이름 수정', oldName)
+    if (!name || !name.trim() || name.trim() === oldName) return
+    const nm = name.trim()
+    if (nm === '전체' || classes.includes(nm)) return alert('이미 있는 이름이에요.')
+    await supabase.from('boards').update({ name: nm }).eq('name', oldName)
+    await supabase.from('posts').update({ category: nm }).eq('category', oldName)
+    if (filter === oldName) setFilter(nm)
+    load()
+  }
+
+  const deleteBoard = async (name) => {
+    if (!confirm(`'${name}' 탭을 삭제할까요?\n(글은 지워지지 않고 '전체'에서 계속 볼 수 있어요)`)) return
+    await supabase.from('boards').delete().eq('name', name)
+    if (filter === name) setFilter('전체')
+    load()
+  }
 
   const shown = useMemo(() => {
     let list = filter === '전체' ? posts : posts.filter((p) => p.category === filter)
+    if (year !== '전체') {
+      list = list.filter((p) => new Date(p.created_at).getFullYear() === Number(year))
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       list = list.filter((p) =>
@@ -341,7 +383,7 @@ export default function App() {
       list = [...list].sort((a, b) => (b.comments?.[0]?.count ?? 0) - (a.comments?.[0]?.count ?? 0))
     }
     return list
-  }, [posts, filter, search, sort])
+  }, [posts, filter, search, sort, year])
 
   const openPost = (id) => { window.location.hash = `#/post/${id}` }
   const goList = () => { window.location.hash = '' }
@@ -351,7 +393,7 @@ export default function App() {
   return (
     <div className="canvas">
       <div className="topbar">
-        <div className="pill logo-pill"><span className="logo-dot">✳</span> 수업자료실</div>
+        <div className="pill logo-pill"><span className="logo-dot">✳</span> HWANG GEUM SCIENCE <span className="logo-heart">♥</span></div>
         <div className="topbar-right">
           {showSearch && (
             <input className="search-in" autoFocus value={search}
@@ -368,12 +410,30 @@ export default function App() {
             <div className="hero-glow" aria-hidden="true" />
             <div className="hero-tabs">
               {['전체', ...classes].map((t) => (
-                <button key={t} className={`hero-tab ${filter === t ? 'on' : ''}`} onClick={() => setFilter(t)}>{t}</button>
+                <span key={t} className="hero-tab-wrap">
+                  <button className={`hero-tab ${filter === t ? 'on' : ''}`} onClick={() => setFilter(t)}>{t}</button>
+                  {manage && t !== '전체' && (
+                    <span className="tab-tools">
+                      <button onClick={() => renameBoard(t)} aria-label={`${t} 이름 수정`}>✎</button>
+                      <button onClick={() => deleteBoard(t)} aria-label={`${t} 삭제`}>×</button>
+                    </span>
+                  )}
+                </span>
               ))}
+              {manage && <button className="tab-add" onClick={addBoard}>＋ 탭 추가</button>}
+              <button className={`tab-manage ${manage ? 'on' : ''}`} onClick={() => setManage(!manage)}>
+                {manage ? '완료' : '✎ 탭 편집'}
+              </button>
             </div>
             <div className="sub-tabs">
               <button className={sort === 'latest' ? 'on' : ''} onClick={() => setSort('latest')}>최신순</button>
               <button className={sort === 'comments' ? 'on' : ''} onClick={() => setSort('comments')}>댓글순</button>
+              {years.length > 1 && (
+                <select className="year-select" value={year} onChange={(e) => setYear(e.target.value)} aria-label="연도">
+                  <option value="전체">전체 연도</option>
+                  {years.map((y) => <option key={y} value={y}>{y}년</option>)}
+                </select>
+              )}
             </div>
           </div>
 
