@@ -29,6 +29,10 @@ const fmtTime = (iso) => {
 const publicUrl = (path) => supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
 const displayName = (a) => (a && a.trim()) || '익명'
 const authorName = (row) => (row.is_admin ? '금주쌤' : displayName(row.author))
+const imageFromClipboard = (e) => {
+  const item = [...(e.clipboardData?.items || [])].find((it) => it.type.startsWith('image/'))
+  return item ? item.getAsFile() : null
+}
 const isPinned = (p) => p.pinned_until && new Date(p.pinned_until + 'T23:59:59') >= new Date()
 const parseHash = () => {
   const m = window.location.hash.match(/^#\/post\/(.+)$/)
@@ -49,6 +53,14 @@ function ComposeModal({ classes, initialClass, isAdmin, onClose, onDone }) {
   const [linkUrl, setLinkUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
+  const onPaste = (e) => {
+    const f = imageFromClipboard(e)
+    if (!f) return
+    e.preventDefault()
+    setAttach('file')
+    setFile(f)
+  }
 
   const submit = async () => {
     setError('')
@@ -97,7 +109,7 @@ function ComposeModal({ classes, initialClass, isAdmin, onClose, onDone }) {
 
   return (
     <div className="overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
+      <div className="modal" onPaste={onPaste}>
         <div className="modal-title">새 글 쓰기</div>
 
         <label>수업 <span className="req">*</span></label>
@@ -135,7 +147,7 @@ function ComposeModal({ classes, initialClass, isAdmin, onClose, onDone }) {
           <label className="file-drop">
             <input type="file" hidden onChange={(e) => setFile(e.target.files[0] || null)} />
             {file ? <span>{fileIcon(file.name)} {file.name}</span>
-              : <span className="muted">여기를 눌러 파일 선택 (최대 {MAX_FILE_MB}MB)</span>}
+              : <span className="muted">여기를 눌러 파일 선택 · 사진은 Ctrl+V 붙여넣기도 돼요 (최대 {MAX_FILE_MB}MB)</span>}
           </label>
         )}
         {attach === 'link' && (
@@ -345,8 +357,12 @@ function Detail({ post, onBack, onDeleted, onChanged, isAdmin }) {
             <input className="name-in" value={cAuthor} onChange={(e) => setCAuthor(e.target.value)} placeholder="이름 (선택)" />
           )}
           <input className="content-in" value={cContent} onChange={(e) => setCContent(e.target.value)}
-            placeholder={post.category === 'Q&A' ? '답변을 남겨 주세요' : '댓글을 남겨 주세요'}
-            onKeyDown={(e) => e.key === 'Enter' && !busy && addComment()} />
+            placeholder={post.category === 'Q&A' ? '답변을 남겨 주세요 (사진은 Ctrl+V)' : '댓글을 남겨 주세요 (사진은 Ctrl+V)'}
+            onKeyDown={(e) => e.key === 'Enter' && !busy && addComment()}
+            onPaste={(e) => {
+              const f = imageFromClipboard(e)
+              if (f) { e.preventDefault(); setCImage(f) }
+            }} />
           <label className="circle-btn cam-btn" aria-label="사진 첨부">
             📷
             <input type="file" accept="image/*" hidden
