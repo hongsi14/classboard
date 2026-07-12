@@ -243,6 +243,26 @@ main { padding: 24px 32px 0; position: relative; }
   border-radius: 50%; font-size: 15px;
 }
 
+/* ── 공지사항 / Q&A 전용 ── */
+.card.notice {
+  background: #fffaef;
+  border-color: #efdcae;
+}
+.card.notice .badge { background: #f7ecd2; color: #8a5a00; }
+.card.notice:hover { box-shadow: 0 10px 28px rgba(138, 90, 0, 0.14); }
+.card.qna .badge { background: #e9edfb; color: #3a4fb5; }
+.q-mark {
+  font-weight: 800; color: #3a4fb5;
+  margin-right: 6px;
+}
+.answer-pill {
+  font-size: 12px; font-weight: 700;
+  border-radius: 99px; padding: 5px 12px;
+  white-space: nowrap;
+}
+.answer-pill.done { background: #e4f4ea; color: #177245; }
+.answer-pill.wait { background: #fdeede; color: #b45f17; }
+
 /* ── 상세 ── */
 .detail { padding: 8px 32px 0; max-width: 720px; margin: 0 auto; position: relative; }
 .detail-head { margin-top: 18px; }

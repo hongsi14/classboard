@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase, BUCKET } from './supabase'
 
 const MAX_FILE_MB = 50
+const DEFAULT_BOARDS = ['공지사항', '1학년 과학', '2학년 과학', '3학년 과학', '기타 자료실', 'Q&A']
 
 function fileIcon(name = '') {
   const ext = name.split('.').pop().toLowerCase()
@@ -146,19 +147,30 @@ function ComposeModal({ classes, initialClass, onClose, onDone }) {
 /* ── 게시글 카드 ── */
 function PostCard({ post, onOpen }) {
   const count = post.comments?.[0]?.count ?? 0
+  const isNotice = post.category === '공지사항'
+  const isQnA = post.category === 'Q&A'
   return (
-    <article className="card" onClick={() => onOpen(post.id)}>
+    <article className={`card ${isNotice ? 'notice' : ''} ${isQnA ? 'qna' : ''}`} onClick={() => onOpen(post.id)}>
       <div className="card-top">
-        <span className="badge">{post.category}</span>
+        <span className="badge">{isNotice ? '📢 공지사항' : post.category}</span>
         {(post.file_path || post.link_url) && (
           <span className="attach-dot">{post.link_url ? '🔗' : fileIcon(post.file_name)}</span>
         )}
       </div>
-      <h3>{post.title}</h3>
+      <h3>{isQnA && <span className="q-mark">Q.</span>}{post.title}</h3>
       {post.content && <p className="preview">{post.content}</p>}
       <div className="card-foot">
-        <span className="meta">{displayName(post.author)} · {fmtDate(post.created_at)}{count > 0 && <> · 💬 {count}</>}</span>
-        <span className="go" aria-hidden="true">→</span>
+        <span className="meta">
+          {displayName(post.author)} · {fmtDate(post.created_at)}
+          {!isQnA && count > 0 && <> · 💬 {count}</>}
+        </span>
+        {isQnA ? (
+          <span className={`answer-pill ${count > 0 ? 'done' : 'wait'}`}>
+            {count > 0 ? `답변 ${count}` : '답변 대기'}
+          </span>
+        ) : (
+          <span className="go" aria-hidden="true">→</span>
+        )}
       </div>
     </article>
   )
@@ -211,8 +223,8 @@ function Detail({ post, onBack, onDeleted }) {
     <div className="detail">
       <button className="circle-btn" onClick={onBack} aria-label="목록으로">←</button>
       <div className="detail-head">
-        <span className="badge">{post.category}</span>
-        <h2>{post.title}</h2>
+        <span className="badge">{post.category === '공지사항' ? '📢 공지사항' : post.category}</span>
+        <h2>{post.category === 'Q&A' && <span className="q-mark">Q.</span>}{post.title}</h2>
         <p className="meta">{displayName(post.author)} · {fmtTime(post.created_at)}</p>
       </div>
       {post.content && <p className="body-text">{post.content}</p>}
@@ -227,7 +239,7 @@ function Detail({ post, onBack, onDeleted }) {
       <button className="text-del" onClick={deletePost}>글 삭제</button>
 
       <div className="comments">
-        <div className="comments-title">댓글 {comments.length}</div>
+        <div className="comments-title">{post.category === 'Q&A' ? `답변 ${comments.length}` : `댓글 ${comments.length}`}</div>
         {comments.map((c) => (
           <div key={c.id} className="comment">
             <div className="comment-head">
@@ -241,7 +253,7 @@ function Detail({ post, onBack, onDeleted }) {
         <div className="comment-form">
           <input className="name-in" value={cAuthor} onChange={(e) => setCAuthor(e.target.value)} placeholder="이름 (선택)" />
           <input className="content-in" value={cContent} onChange={(e) => setCContent(e.target.value)}
-            placeholder="댓글을 남겨 주세요"
+            placeholder={post.category === 'Q&A' ? '답변을 남겨 주세요' : '댓글을 남겨 주세요'}
             onKeyDown={(e) => e.key === 'Enter' && !busy && addComment()} />
           <button className="circle-btn dark" onClick={addComment} disabled={busy} aria-label="댓글 등록">↑</button>
         </div>
@@ -333,8 +345,10 @@ export default function App() {
   useEffect(() => { load() }, [load])
 
   const classes = useMemo(() => {
-    if (boards.length > 0) return boards.map((b) => b.name)
-    return [...new Set(posts.map((p) => p.category).filter(Boolean))]
+    const custom = boards.map((b) => b.name).filter((n) => !DEFAULT_BOARDS.includes(n))
+    const orphan = [...new Set(posts.map((p) => p.category).filter(Boolean))]
+      .filter((n) => !DEFAULT_BOARDS.includes(n) && !custom.includes(n))
+    return [...DEFAULT_BOARDS, ...custom, ...orphan]
   }, [boards, posts])
 
   const years = useMemo(() => {
@@ -352,6 +366,7 @@ export default function App() {
   }
 
   const renameBoard = async (oldName) => {
+    if (DEFAULT_BOARDS.includes(oldName)) return
     const name = prompt('탭 이름 수정', oldName)
     if (!name || !name.trim() || name.trim() === oldName) return
     const nm = name.trim()
@@ -363,6 +378,7 @@ export default function App() {
   }
 
   const deleteBoard = async (name) => {
+    if (DEFAULT_BOARDS.includes(name)) return
     if (!confirm(`'${name}' 탭을 삭제할까요?\n(글은 지워지지 않고 '전체'에서 계속 볼 수 있어요)`)) return
     await supabase.from('boards').delete().eq('name', name)
     if (filter === name) setFilter('전체')
@@ -382,7 +398,10 @@ export default function App() {
     if (sort === 'comments') {
       list = [...list].sort((a, b) => (b.comments?.[0]?.count ?? 0) - (a.comments?.[0]?.count ?? 0))
     }
-    return list
+    // 공지사항은 항상 맨 위에 고정
+    const notices = list.filter((p) => p.category === '공지사항')
+    const rest = list.filter((p) => p.category !== '공지사항')
+    return [...notices, ...rest]
   }, [posts, filter, search, sort, year])
 
   const openPost = (id) => { window.location.hash = `#/post/${id}` }
@@ -412,7 +431,7 @@ export default function App() {
               {['전체', ...classes].map((t) => (
                 <span key={t} className="hero-tab-wrap">
                   <button className={`hero-tab ${filter === t ? 'on' : ''}`} onClick={() => setFilter(t)}>{t}</button>
-                  {manage && t !== '전체' && (
+                  {manage && t !== '전체' && !DEFAULT_BOARDS.includes(t) && (
                     <span className="tab-tools">
                       <button onClick={() => renameBoard(t)} aria-label={`${t} 이름 수정`}>✎</button>
                       <button onClick={() => deleteBoard(t)} aria-label={`${t} 삭제`}>×</button>
